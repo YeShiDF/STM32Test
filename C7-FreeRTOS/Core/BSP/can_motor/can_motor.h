@@ -15,8 +15,7 @@ extern "C" {
 #endif
 
 #include <stdint.h>
-#include "can.h"        /* 仅为拿到 CAN_HandleTypeDef 类型；若想头文件零 HAL 依赖，
-                           可把下面的 CAN_HandleTypeDef* 改成 void*，在 .c 里强转 */
+#include "can.h"          /* Core/Inc 已在头文件搜索路径里，写相对路径反而一挪就断 */
 
 /* ============================ 可调参数 ============================ */
 

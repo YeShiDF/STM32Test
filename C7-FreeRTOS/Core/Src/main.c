@@ -27,8 +27,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "can_motor.h"
-#include "pid.h"
+#include "../BSP/can_motor/can_motor.h"
+#include "../BSP/pid/pid.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -56,6 +56,10 @@ float  g_actual_rpm = 0.0f;         /* 实际转速（来自反馈帧） */
 float  g_out        = 0.0f;         /* PID 输出（控制量） */
 float  g_loop_hz    = 0.0f;         /* 实测控制循环频率，正常应该是 1000 左右 */
 uint8_t g_all_online = 0;           /* 所有电机是否在线（供其他任务读） */
+
+/* 启动开关，定义在 BSP/tasks.c：收到 "motor+NNN" 后置 1。
+   控制循环要先看它，所以这里要有声明。 */
+extern volatile int ifStartMain;
 
 /* 两颗 LED 都挂在 TIM5 上做 PWM（ARR = 100，所以占空比就是 0~100）：
  *   绿灯 PH11 → TIM5_CH2   红灯 PH12 → TIM5_CH3
@@ -112,14 +116,24 @@ void App_ControlLoop(void)
     win_start  = now;
   }
 
+  /* ① 在线判定 + 指示灯：每拍都做，不受 ifStartMain 影响。
+        Motor_Update() 只是拿 last_tick 和 now 比一下，不发帧、不碰电机，
+        放到下面那层 if 之后的话，没收到命令时就永远判离线，红灯一直亮。 */
+  g_all_online = Motor_Update();      /* 软件看门狗：刷新在线状态 */
+  App_OfflineIndicate(g_all_online);
+
   d = Motor_Get(1);
   if (d == 0) {
     return;
   }
   g_actual_rpm = (float)d->speed;
 
-  g_all_online = Motor_Update();  /* 软件看门狗：刷新在线状态 */
+  /* ② 还没收到 "motor+NNN"：只监视、不输出，电机保持静止 */
+  if (!ifStartMain) {
+    return;
+  }
 
+  /* ③ 收到命令后才开始闭环输出 */
 #if APP_MODE_OPEN_LOOP
   g_out = (float)OPEN_LOOP_OUT;
 #else
@@ -134,8 +148,6 @@ void App_ControlLoop(void)
 
   Motor_SetOutput(1, (int16_t)g_out);
   Motor_Flush();
-
-  App_OfflineIndicate(g_all_online);
 }
 
 /* USER CODE END 0 */
